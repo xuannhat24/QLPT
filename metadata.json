@@ -1,0 +1,7 @@
+{
+  "name": "Trọ Pro",
+  "description": "Nền tảng tìm kiếm và quản lý phòng trọ chuyên nghiệp, hiện đại, giúp kết nối chủ trọ và người thuê dễ dàng.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
