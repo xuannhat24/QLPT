@@ -100,7 +100,7 @@ export const HomePage = ({
               animate={{ opacity: 1, y: 0 }}
               className="text-4xl md:text-6xl font-black text-white mb-6 leading-tight font-display"
             >
-              Tìm phòng trọ ưng ý cùng <span className="text-primary">Trọ Pro</span>
+              Tìm phòng trọ ưng ý cùng <span className="text-primary block mt-2">Trọ Pro</span>
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0, y: 20 }}

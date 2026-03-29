@@ -254,14 +254,8 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
               src="https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&q=80&w=1920"
               referrerPolicy="no-referrer"
             />
-            <div className="relative z-20 h-full flex flex-col justify-center px-12 text-white">
-              <motion.span 
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="inline-block bg-primary text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-lg mb-6 w-max shadow-lg"
-              >
-                Bộ sưu tập 2024
-              </motion.span>
+            <div className="relative z-20 h-full flex flex-col justify-center px-12 text-white mt-1">
+             
               <motion.h1 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

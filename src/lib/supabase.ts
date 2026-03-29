@@ -25,18 +25,24 @@ export interface Listing {
   images?: string[];
   amenities?: string[];
   is_active: boolean;
+  approval_status?: 'pending' | 'approved' | 'rejected';
   created_at: string;
   owner_id?: string;
 }
 
 export interface UserPreference {
   id?: string;
+  user_id?: string;
   session_id: string;
   location?: string;
+  street?: string;
+  city?: string;
   min_price?: number;
   max_price?: number;
   min_area?: number;
   amenities?: string[];
   room_type?: string;
+  is_active?: boolean;
+  notified_ids?: string[];
   created_at?: string;
 }

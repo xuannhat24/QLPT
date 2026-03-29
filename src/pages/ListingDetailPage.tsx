@@ -56,11 +56,21 @@ export const ListingDetailPage = ({ onNavigate, user, onLogout, params }: Listin
   const { showToast } = useToast();
 
   const handleStartMessage = async () => {
-    showToast('Vui lòng đăng nhập để liên hệ chủ nhà!', 'warning');
+    // Guard: yêu cầu đăng nhập trước
+    if (!user) {
+      showToast('Vui lòng đăng nhập để liên hệ chủ nhà!', 'warning');
+      onNavigate('login');
+      return;
+    }
 
     if (!listing?.owner_id) {
-      // if we don't have the real owner_id (e.g., using mock data), we can't create a real chat
-      alert("Chức năng này yêu cầu dữ liệu chủ trọ từ hệ thống.");
+      showToast('Không tìm thấy thông tin chủ trọ. Vui lòng thử lại.', 'error');
+      return;
+    }
+
+    // Không tự nhắn tin với chính mình
+    if (listing.owner_id === user.id) {
+      showToast('Bạn là chủ của phòng này.', 'warning');
       return;
     }
 
@@ -74,7 +84,9 @@ export const ListingDetailPage = ({ onNavigate, user, onLogout, params }: Listin
         .eq('tenant_id', user.id)
         .eq('landlord_id', listing.owner_id);
 
-      let conversationId = null;
+      if (fetchError) throw fetchError;
+
+      let conversationId: string | null = null;
 
       if (existingConvs && existingConvs.length > 0) {
         conversationId = existingConvs[0].id;
@@ -94,17 +106,18 @@ export const ListingDetailPage = ({ onNavigate, user, onLogout, params }: Listin
       }
 
       if (conversationId) {
-        // 3. Send automated initial message
-        const messageContent = `Tôi đang quan tâm đến phòng: ${listing.title}`;
-        await supabase
-          .from('messages')
-          .insert({
-            conversation_id: conversationId,
-            sender_id: user.id,
-            content: messageContent
-          });
-
-        await supabase.from('conversations').update({ updated_at: new Date() }).eq('id', conversationId);
+        // 3. Send automated initial message (chỉ nếu conversation mới)
+        if (!existingConvs || existingConvs.length === 0) {
+          const messageContent = `Xin chào! Tôi đang quan tâm đến phòng: ${listing.title}`;
+          await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              sender_id: user.id,
+              content: messageContent
+            });
+          await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+        }
 
         // 4. Lấy role của user để điều hướng đúng Portal
         const { data: profile } = await supabase
@@ -116,21 +129,26 @@ export const ListingDetailPage = ({ onNavigate, user, onLogout, params }: Listin
         const role = profile?.role || 'tenant';
         const targetPage = (role === 'landlord' || role === 'admin') ? 'manage' : 'tenant';
 
+        showToast('Đang mở cuộc trò chuyện...', 'success');
         onNavigate(targetPage, { tab: 'messages', activeChat: conversationId });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting conversation:', error);
-      alert('Đã có lỗi xảy ra khi bắt đầu cuộc trò chuyện.');
+      showToast('Lỗi: ' + (error?.message || 'Không thể bắt đầu trò chuyện.'), 'error');
     } finally {
       setMessagingAction(false);
     }
   };
 
   const handleSubmitReport = async () => {
-    showToast('Vui lòng đăng nhập để liên hệ chủ nhà!', 'warning');
+    if (!user) {
+      showToast('Vui lòng đăng nhập để báo cáo!', 'warning');
+      onNavigate('login');
+      return;
+    }
 
     if (!reportReason.trim()) {
-      alert("Vui lòng nhập lý do báo cáo.");
+      showToast('Vui lòng nhập lý do báo cáo.', 'error');
       return;
     }
 

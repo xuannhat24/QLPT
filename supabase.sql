@@ -13,8 +13,8 @@ CREATE TABLE public.contracts (
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT contracts_pkey PRIMARY KEY (id),
   CONSTRAINT contracts_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id),
-  CONSTRAINT contracts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
-  CONSTRAINT contracts_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id)
+  CONSTRAINT contracts_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id),
+  CONSTRAINT contracts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.conversations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -37,8 +37,8 @@ CREATE TABLE public.invoices (
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT invoices_pkey PRIMARY KEY (id),
   CONSTRAINT invoices_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id),
-  CONSTRAINT invoices_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
-  CONSTRAINT invoices_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id)
+  CONSTRAINT invoices_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id),
+  CONSTRAINT invoices_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.listings (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -48,21 +48,21 @@ CREATE TABLE public.listings (
   description text,
   price bigint NOT NULL,
   image_url text,
+  images ARRAY DEFAULT '{}'::text[],
+  amenities ARRAY DEFAULT '{}'::text[],
   is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
   area numeric,
   location text,
   type text,
   street text,
-  images ARRAY,
-  amenities ARRAY,
   electricity_price bigint,
   water_price bigint,
   service_fee bigint,
   deposit bigint,
   latitude numeric,
   longitude numeric,
-  approval_status text DEFAULT 'pending'::text CHECK (approval_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  approval_status text DEFAULT 'approved'::text CHECK (approval_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT listings_pkey PRIMARY KEY (id),
   CONSTRAINT listings_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id),
   CONSTRAINT listings_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id)
@@ -78,6 +78,21 @@ CREATE TABLE public.messages (
   CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id),
   CONSTRAINT messages_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  sender_id uuid,
+  receiver_id uuid NOT NULL,
+  type text NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  related_entity_id uuid,
+  action_url text,
+  is_read boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT notifications_sender_id_fkey FOREIGN KEY (sender_id) REFERENCES auth.users(id),
+  CONSTRAINT notifications_receiver_id_fkey FOREIGN KEY (receiver_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.products (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   owner_id uuid,
@@ -86,7 +101,7 @@ CREATE TABLE public.products (
   price bigint NOT NULL,
   category text,
   image_url text,
-  images ARRAY,
+  images ARRAY DEFAULT '{}'::text[],
   condition text,
   status text DEFAULT 'available'::text,
   created_at timestamp with time zone DEFAULT now(),
@@ -99,7 +114,19 @@ CREATE TABLE public.profiles (
   phone text,
   role text CHECK (role = ANY (ARRAY['landlord'::text, 'tenant'::text, 'admin'::text])),
   avatar_url text,
-  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()),
+  updated_at timestamp with time zone DEFAULT now(),
+  id_card_number text,
+  id_card_date date,
+  id_card_place text,
+  birth_date date,
+  gender text,
+  permanent_address text,
+  bank_name text,
+  bank_account_number text,
+  bank_account_name text,
+  zalo_phone text,
+  emergency_contact_name text,
+  emergency_contact_phone text,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
@@ -124,10 +151,10 @@ CREATE TABLE public.rooms (
   status text DEFAULT 'empty'::text,
   image_url text,
   note text,
-  created_at timestamp with time zone DEFAULT now(),
   electricity_price bigint DEFAULT 3500,
   water_price bigint DEFAULT 20000,
   service_fee bigint DEFAULT 150000,
+  created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT rooms_pkey PRIMARY KEY (id),
   CONSTRAINT rooms_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id)
 );
@@ -143,21 +170,8 @@ CREATE TABLE public.support_requests (
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT support_requests_pkey PRIMARY KEY (id),
   CONSTRAINT support_requests_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES auth.users(id),
-  CONSTRAINT support_requests_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id),
-  CONSTRAINT support_requests_landlord_id_fkey FOREIGN KEY (landlord_id) REFERENCES auth.users(id)
-);
-CREATE TABLE public.tenants (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  owner_id uuid,
-  full_name text NOT NULL,
-  email text,
-  phone text,
-  avatar_url text,
-  created_at timestamp with time zone DEFAULT now(),
-  user_id uuid,
-  CONSTRAINT tenants_pkey PRIMARY KEY (id),
-  CONSTRAINT tenants_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id),
-  CONSTRAINT tenants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT support_requests_landlord_id_fkey FOREIGN KEY (landlord_id) REFERENCES auth.users(id),
+  CONSTRAINT support_requests_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id)
 );
 CREATE TABLE public.user_preferences (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -169,5 +183,11 @@ CREATE TABLE public.user_preferences (
   amenities text,
   room_type text,
   created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT user_preferences_pkey PRIMARY KEY (id)
+  user_id uuid UNIQUE,
+  street text,
+  city text,
+  is_active boolean DEFAULT true,
+  notified_ids ARRAY DEFAULT '{}'::uuid[],
+  CONSTRAINT user_preferences_pkey PRIMARY KEY (id),
+  CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );

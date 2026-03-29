@@ -1,65 +1,216 @@
-import { Type } from "@google/genai";
+// ============================================================
+// ProBot.ts — Core Logic: System Instruction, Intent Detection,
+//              Search Params Extraction, Gemini API wrapper
+// ============================================================
 
-export const SYSTEM_INSTRUCTION = `
-Bạn là ProBot - trợ lý AI thông minh của dự án Trọ Pro.
-Nhiệm vụ của bạn:
-1. Hỏi và lưu nhu cầu thuê phòng của người dùng (vị trí, giá, diện tích, tiện ích).
-2. Khi người dùng cung cấp thông tin, hãy sử dụng công cụ 'save_preferences' để lưu lại.
-3. QUY TẮC VỀ GIÁ:
-   - Nếu người dùng đưa ra một con số cụ thể (ví dụ: "tầm 3 triệu"), hãy tự động tính toán khoảng giá +/- 1.000.000đ (ví dụ: min_price = 2.000.000, max_price = 4.000.000).
-   - Nếu người dùng nói "dưới X triệu", hãy đặt max_price = X và min_price = 0.
-   - Nếu người dùng nói "trên X triệu", hãy đặt min_price = X và max_price = 999.000.000.
-4. TÌM KIẾM THÔNG TIN:
-   - Khi bạn gợi ý các con đường cụ thể (ví dụ: Tôn Đức Thắng, Ngô Sĩ Liên...), hãy LUÔN LUÔN gọi công cụ 'save_preferences' kèm theo tham số 'street' để hệ thống có thể tìm và hiển thị các phòng trọ thực tế ở những đường đó ngay lập tức.
-   - Nếu người dùng đồng ý với gợi ý của bạn (ví dụ: "có", "được", "tìm đi"), hãy gọi ngay 'save_preferences' với các thông tin đã thảo luận.
-5. Luôn trả lời ngắn gọn, thân thiện, dễ hiểu bằng tiếng Việt. KHÔNG bao gồm các đường dẫn (links) hoặc nguồn tham khảo (sources) trong câu trả lời.
-6. HIỂN THỊ PHÒNG TRONG CHAT:
-   - Khi bạn gọi 'save_preferences', hệ thống sẽ tự động tìm các phòng phù hợp và hiển thị chúng dưới dạng các thẻ (cards) ngay trong khung chat để người dùng xem.
-   - Hãy thông báo cho người dùng biết rằng bạn đang liệt kê các phòng phù hợp nhất ngay bên dưới.
-   - Ví dụ: "Dưới đây là một số phòng tại đường Tôn Đức Thắng mà tôi tìm thấy cho bạn:"
+import { GoogleGenAI } from "@google/genai";
+
+// ─────────────────────────────────────────────────────────────
+// SYSTEM INSTRUCTIONS
+// ─────────────────────────────────────────────────────────────
+
+export const ADVISOR_SYSTEM_INSTRUCTION = `
+Bạn là ProBot - trợ lý tư vấn phòng trọ của nền tảng Trọ Pro.
+Phong cách: Ngắn gọn, thân thiện, thực tế. Luôn trả lời bằng tiếng Việt.
+
+Vai trò của bạn:
+1. Tư vấn người thuê về khu vực, đường phố phù hợp với nhu cầu của họ
+2. Phân tích ưu/nhược điểm khu vực, tiện ích xung quanh, mức giá phù hợp
+3. Đặt câu hỏi để hiểu rõ nhu cầu nếu thông tin chưa đủ
+
+Quy tắc bắt buộc:
+- Nếu có "DỮ LIỆU KHU VỰC" bên dưới, ưu tiên dùng dữ liệu đó để trả lời chính xác
+- KHÔNG bịa thông tin. Nếu không có dữ liệu, nói thẳng "Mình chưa có dữ liệu khu vực này"
+- KHÔNG dẫn link hoặc nguồn tham khảo bên ngoài
+- Câu trả lời ngắn gọn, có cấu trúc rõ ràng (dùng bullet points khi cần)
 `;
 
-export const INTENT_CLASSIFIER_INSTRUCTION = `
-Bạn là bộ phân loại ý định người dùng cho ứng dụng tìm phòng trọ. Hãy trả về DUY NHẤT một trong ba từ sau:
-- 'SEARCH': Nếu người dùng hỏi về thông tin thị trường, giá cả trung bình, quy định pháp luật hoặc kiến thức chung cần tra cứu Google.
-- 'SAVE': Nếu người dùng cung cấp thông tin về nhu cầu thuê phòng (vị trí, giá, diện tích) hoặc yêu cầu tìm phòng cụ thể trong database.
-- 'CHAT': Nếu là lời chào hoặc trò chuyện thông thường không cần công cụ.
-`;
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
 
-export const savePreferencesTool = {
-  name: "save_preferences",
-  parameters: {
-    type: Type.OBJECT,
-    description: "Lưu lại nhu cầu thuê phòng của người dùng.",
-    properties: {
-      location: {
-        type: Type.STRING,
-        description: "Khu vực người dùng muốn tìm (ví dụ: Quận 1, Cầu Giấy...)",
-      },
-      street: {
-        type: Type.STRING,
-        description: "Tên đường cụ thể nếu người dùng đề cập hoặc chatbot gợi ý (ví dụ: Đường Tôn Đức Thắng, Đường Nguyễn Lương Bằng...)",
-      },
-      min_price: {
-        type: Type.NUMBER,
-        description: "Giá tối thiểu (VNĐ).",
-      },
-      max_price: {
-        type: Type.NUMBER,
-        description: "Giá tối đa (VNĐ).",
-      },
-      min_area: {
-        type: Type.NUMBER,
-        description: "Diện tích tối thiểu (m2).",
-      },
-      amenities: {
-        type: Type.STRING,
-        description: "Các tiện ích mong muốn (ví dụ: điều hòa, máy giặt, ban công...)",
-      },
-      room_type: {
-        type: Type.STRING,
-        description: "Loại phòng (phòng trọ, chung cư mini, căn hộ...)",
-      },
-    },
-  },
-};
+export interface SearchParams {
+  location?: string;
+  street?: string;
+  minPrice?: number; // VNĐ
+  maxPrice?: number; // VNĐ
+  minArea?: number;  // m²
+  roomType?: string;
+}
+
+export type Intent = 'FIND_ROOM' | 'ADVICE' | 'CHAT';
+
+// ─────────────────────────────────────────────────────────────
+// INTENT DETECTION (client-side, 0 API call)
+// ─────────────────────────────────────────────────────────────
+
+const FIND_KEYWORDS = [
+  'tìm', 'thuê', 'kiếm', 'cho thuê', 'có phòng', 'phòng trống',
+  'muốn thuê', 'cần thuê', 'tìm phòng', 'tìm trọ', 'phòng nào',
+];
+
+const ADVICE_KEYWORDS = [
+  'nên ở', 'nên thuê', 'đường nào', 'khu nào', 'ở đâu', 'khu vực nào',
+  'tiện ích', 'gần trường', 'gần chợ', 'ưu điểm', 'nhược điểm',
+  'so sánh', 'tốt không', 'an ninh', 'an toàn', 'yên tĩnh',
+];
+
+export function detectIntent(text: string): Intent {
+  const lower = text.toLowerCase();
+
+  const hasFindKeyword = FIND_KEYWORDS.some(k => lower.includes(k));
+  const hasPrice = /\d+\s*(?:triệu|tr)/.test(lower);
+
+  if (hasFindKeyword || hasPrice) return 'FIND_ROOM';
+
+  const hasAdviceKeyword = ADVICE_KEYWORDS.some(k => lower.includes(k));
+  if (hasAdviceKeyword) return 'ADVICE';
+
+  return 'CHAT';
+}
+
+// ─────────────────────────────────────────────────────────────
+// SEARCH PARAMS EXTRACTION (regex, 0 API call)
+// ─────────────────────────────────────────────────────────────
+
+export function extractSearchParams(text: string): SearchParams {
+  const params: SearchParams = {};
+  const lower = text.toLowerCase();
+
+  // Price range: "2-4 triệu", "từ 2 đến 4 triệu"
+  const rangeMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*[-–đến tới]+\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)/);
+  if (rangeMatch) {
+    params.minPrice = parseFloat(rangeMatch[1].replace(',', '.')) * 1_000_000;
+    params.maxPrice = parseFloat(rangeMatch[2].replace(',', '.')) * 1_000_000;
+  }
+
+  // Max price: "dưới 5 triệu", "không quá 5tr"
+  if (!params.maxPrice) {
+    const maxMatch = lower.match(/(?:dưới|không quá|tối đa|max)\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)/);
+    if (maxMatch) params.maxPrice = parseFloat(maxMatch[1].replace(',', '.')) * 1_000_000;
+  }
+
+  // Min price: "trên 2 triệu", "từ 2tr"
+  if (!params.minPrice) {
+    const minMatch = lower.match(/(?:trên|từ|ít nhất|tối thiểu)\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)/);
+    if (minMatch) params.minPrice = parseFloat(minMatch[1].replace(',', '.')) * 1_000_000;
+  }
+
+  // Exact price: "tầm 3 triệu", "khoảng 3tr" → ±1 triệu
+  if (!params.minPrice && !params.maxPrice) {
+    const exactMatch = lower.match(/(?:tầm|khoảng|khoảng|giá)?\s*(\d+(?:[.,]\d+)?)\s*(?:triệu|tr)/);
+    if (exactMatch) {
+      const val = parseFloat(exactMatch[1].replace(',', '.')) * 1_000_000;
+      params.minPrice = Math.max(0, val - 1_000_000);
+      params.maxPrice = val + 1_000_000;
+    }
+  }
+
+  // Area: "30m2", "30 mét vuông"
+  const areaMatch = lower.match(/(\d+)\s*(?:m2|m²|mét vuông|mét)/);
+  if (areaMatch) params.minArea = parseInt(areaMatch[1]);
+
+  // Room type
+  const typeMap: Record<string, string> = {
+    'chung cư mini': 'chung cư mini',
+    'studio': 'studio',
+    'căn hộ': 'căn hộ',
+    'phòng trọ': 'phòng trọ',
+    'nhà trọ': 'phòng trọ',
+  };
+  for (const [keyword, type] of Object.entries(typeMap)) {
+    if (lower.includes(keyword)) { params.roomType = type; break; }
+  }
+
+  // Tên đường: "đường Ngô Quyền", "phố Lê Duẩn"
+  // Match từ "đường" hoặc "phố" tiếp theo là 1-5 từ tiếng Việt, dừng lại trước các từ khóa dừng
+  const streetMatch = lower.match(/(?:đường|phố)\s+([a-zà-ỹ0-9\s]{2,40}?)(?:\s+(?:quận|q\.|huyện|ở|tại|giá|khoảng|có|cho|thuê|phường|p\.)|$|,|\.)/i);
+  if (streetMatch && streetMatch[1].trim()) {
+    // Loại bỏ các từ thừa có thể dính vào
+    let streetName = streetMatch[1].trim();
+    if (streetName.length > 2) {
+      params.street = streetName;
+    }
+  }
+
+  return params;
+}
+
+// ─────────────────────────────────────────────────────────────
+// GEMINI API CALL WITH AUTO-RETRY
+// ─────────────────────────────────────────────────────────────
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+function parseRetryDelay(error: any): number {
+  try {
+    const msg = typeof error?.message === 'string' ? error.message : JSON.stringify(error);
+    // Extract retryDelay from error message JSON
+    const jsonStart = msg.indexOf('{');
+    if (jsonStart !== -1) {
+      const parsed = JSON.parse(msg.slice(jsonStart));
+      const retryInfo = (parsed?.error?.details || []).find((d: any) =>
+        d['@type']?.includes('RetryInfo')
+      );
+      if (retryInfo?.retryDelay) return parseInt(String(retryInfo.retryDelay)) + 2;
+    }
+  } catch {}
+  return 62; // safe default +2s buffer
+}
+
+function isRateLimitError(error: any): boolean {
+  const msg = String(error?.message || error);
+  return msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+}
+
+export async function callGemini(
+  userText: string,
+  systemInstruction: string,
+  apiKey: string,
+  history: Array<{ role: 'user' | 'model'; text: string }> = [],
+  onCountdown?: (s: number) => void,
+  maxRetries = 2
+): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey });
+
+  // Build contents from history + current message
+  const contents = [
+    ...history.map(h => ({
+      role: h.role,
+      parts: [{ text: h.text }],
+    })),
+    { role: 'user' as const, parts: [{ text: userText }] },
+  ];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents,
+        config: { systemInstruction, temperature: 0.7 },
+      });
+
+      const parts = (response.candidates?.[0]?.content?.parts || []) as any[];
+      return parts.filter(p => p.text).map(p => p.text as string).join('\n').trim();
+
+    } catch (error: any) {
+      if (isRateLimitError(error) && attempt < maxRetries) {
+        const delay = parseRetryDelay(error);
+        console.warn(`[ProBot] Rate limit hit. Retrying in ${delay}s... (attempt ${attempt + 1})`);
+
+        if (onCountdown) {
+          for (let i = delay; i > 0; i--) {
+            onCountdown(i);
+            await sleep(1000);
+          }
+          onCountdown(0);
+        } else {
+          await sleep(delay * 1000);
+        }
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Max retries exceeded');
+}

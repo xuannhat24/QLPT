@@ -37,7 +37,7 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
     }
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -50,7 +50,24 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
       });
 
       if (signUpError) throw signUpError;
-      
+
+      // Tạo bản ghi profile trong bảng public.profiles
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: authData.user.id,
+            full_name: fullName,
+            phone: phone,
+            role: role,
+          }, { onConflict: 'id' });
+
+        if (profileError) {
+          console.error('Lỗi tạo profile:', profileError);
+          // Không throw vì đăng ký vẫn thành công, profile có thể được tạo qua trigger
+        }
+      }
+
       setSuccess(true);
       setTimeout(() => onNavigate('login'), 3000);
     } catch (err: any) {
@@ -143,7 +160,7 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-slate-700 text-sm font-semibold">Vai trò của bạn</label>
+              <label className="text-slate-700 text-sm font-semibold">Bạn là</label>
               <div className="flex gap-4">
                 <button 
                   type="button"

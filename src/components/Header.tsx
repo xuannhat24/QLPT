@@ -1,13 +1,14 @@
 import React, { ReactNode } from 'react';
 import { Home, User, LogOut } from 'lucide-react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
+import { NotificationBell } from './NotificationBell';
 
 export type Page = 'home' | 'login' | 'register' | 'store' | 'manage' | 'contact' | 'search' | 'tenant' | 'admin' | 'listing-detail';
 
 interface HeaderProps {
   user: SupabaseUser | null;
   onLogout: () => void;
-  onNavigate: (page: Page) => void;
+  onNavigate: (page: Page, params?: any) => void;
   activePath?: Page;
   children?: ReactNode;
 }
@@ -101,6 +102,7 @@ export const Header = ({ user, onLogout, onNavigate, activePath, children }: Hea
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-4">
+              <NotificationBell user={user} onNavigate={onNavigate} />
               <div className="flex items-center gap-2 cursor-pointer group">
                 <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
                   <User className="w-5 h-5" />

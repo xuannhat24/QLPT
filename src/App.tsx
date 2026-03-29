@@ -164,7 +164,7 @@ export default function App() {
           )}
         </motion.div>
       </AnimatePresence>
-      <ProBot />
+      <ProBot onNavigate={handleNavigate} />
     </>
   );
 }
