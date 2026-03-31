@@ -10,16 +10,23 @@ import { ContactPage } from './pages/ContactPage';
 import { TenantPage } from './pages/TenantPage';
 import { AdminPage } from './pages/AdminPage';
 import { ListingDetailPage } from './pages/ListingDetailPage';
+import { PaymentResultPage } from './pages/PaymentResultPage';
+import { StoreDetailPage } from './pages/StoreDetailPage';
 import { useToast } from './context/ToastContext';
 import ProBot from './components/ProBot';
 import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
-type Page = 'home' | 'login' | 'register' | 'forgot-password' | 'manage' | 'store' | 'search' | 'contact' | 'tenant' | 'admin' | 'listing-detail';
+type Page = 'home' | 'login' | 'register' | 'forgot-password' | 'manage' | 'store' | 'search' | 'contact' | 'tenant' | 'admin' | 'listing-detail' | 'payment-result' | 'store-detail';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    // Hỗ trợ redirect trực tiếp cho return URL của VNPAY
+    const path = window.location.pathname.replace('/', '');
+    if (path === 'payment-result') return 'payment-result';
+    return 'home';
+  });
   const [session, setSession] = useState<Session | null>(null);
   const [searchParams, setSearchParams] = useState<any>(null);
   const [dbRole, setDbRole] = useState<string | null>(null);
@@ -74,12 +81,8 @@ export default function App() {
   }, [currentPage, currentRole, session]);
 
   const handleNavigate = (page: string, params?: any) => {
+    setSearchParams(params || null);
     setCurrentPage(page as Page);
-    if (params) {
-      setSearchParams(params);
-    } else {
-      setSearchParams(null);
-    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -162,9 +165,25 @@ export default function App() {
               params={searchParams}
             />
           )}
+          {currentPage === 'payment-result' && (
+            <PaymentResultPage 
+              onNavigate={handleNavigate} 
+            />
+          )}
+          {currentPage === 'store-detail' && (
+            <StoreDetailPage 
+              onNavigate={handleNavigate} 
+              user={session?.user || null}
+              onLogout={handleLogout}
+              params={searchParams}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
-      <ProBot onNavigate={handleNavigate} />
+      {/* ProBot chỉ hiện ở những trang không phải cửa hàng */}
+      {currentPage !== 'store' && currentPage !== 'store-detail' && (
+        <ProBot onNavigate={handleNavigate} />
+      )}
     </>
   );
 }

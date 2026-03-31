@@ -3,30 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { useToast } from '../context/ToastContext';
+import { useCart } from '../context/CartContext';
+import { CartDrawer } from '../components/CartDrawer';
 import {
-  Home,
-  Search,
-  User,
-  LogOut,
-  ShoppingCart,
-  Heart,
-  Star,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  LayoutGrid,
-  Armchair,
-  Utensils,
-  Sparkles,
-  Trash2,
-  Bed,
-  PlusCircle,
-  X,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  MessageSquare,
-  Loader2
+  Search, Plus, LayoutGrid, Armchair, Utensils,
+  Sparkles, Trash2, Bed, PlusCircle, X, CheckCircle2, Loader2, ShoppingCart
 } from 'lucide-react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -41,25 +22,19 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
   const [activeCategory, setActiveCategory] = useState('all');
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCart, setShowCart] = useState(false);
   
   // Create Product State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { showToast } = useToast();
+  const { cartCount } = useCart();
   const [productForm, setProductForm] = useState({
-    title: '',
-    price: '',
-    category: 'Nội thất',
-    condition: 'Mới',
-    description: '',
-    image_url: '',
-    images: ['']
+    title: '', price: '', category: 'Nội thất', 
+    condition: 'Mới', brand: '', warranty: 'Không bảo hành', address_summary: '', 
+    description: '', images: ['', '', ''], stock: 1
   });
-
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [ownerProfile, setOwnerProfile] = useState<any>(null);
-  const [loadingOwner, setLoadingOwner] = useState(false);
 
   const categories = [
     { id: 'all', label: 'Tất cả', icon: LayoutGrid },
@@ -91,14 +66,21 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
     fetchProducts();
   }, []);
 
+  const handleImageChange = (index: number, value: string) => {
+    const newImages = [...productForm.images];
+    newImages[index] = value;
+    setProductForm({ ...productForm, images: newImages });
+  };
+
   const handleCreateProduct = async () => {
     if (!user) {
       showToast('Vui lòng đăng nhập để đăng bán đồ!', 'warning');
       return;
     }
 
-    if (!productForm.title || !productForm.price || !productForm.image_url) {
-      showToast('Vui lòng điền đầy đủ các thông tin bắt buộc!', 'warning');
+    const validImages = productForm.images.filter(img => img.trim() !== '');
+    if (!productForm.title || !productForm.price || validImages.length === 0) {
+      showToast('Vui lòng điền tiêu đề, giá và ít nhất 1 ảnh!', 'warning');
       return;
     }
 
@@ -112,181 +94,94 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
           price: parseInt(productForm.price.toString()),
           category: productForm.category,
           condition: productForm.condition,
+          brand: productForm.brand,
+          warranty: productForm.warranty,
+          address_summary: productForm.address_summary,
           description: productForm.description,
-          image_url: productForm.image_url,
-          images: productForm.images.filter(img => img.trim() !== ''),
+          stock: parseInt(productForm.stock.toString()) || 1,
+          image_url: validImages[0], 
+          images: validImages,
           status: 'available'
         });
 
       if (error) throw error;
 
-      showToast('Đăng bán sản phẩm thành công!', 'success');
+      showToast('Đăng bài bán đồ thành công!', 'success');
       setShowCreateModal(false);
       setProductForm({
         title: '', price: '', category: 'Nội thất', 
-        condition: 'Mới', description: '', image_url: '', images: ['']
+        condition: 'Mới', brand: '', warranty: 'Không bảo hành', 
+        address_summary: '', description: '', images: ['', '', ''], stock: 1
       });
       fetchProducts();
     } catch (error) {
       console.error('Error creating product:', error);
-      showToast('Hệ thống đang bảo trì. Vui lòng thử lại sau!', 'error');
+      showToast('Có lỗi xảy ra khi lưu vào Database.', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const fetchOwnerProfile = async (ownerId: string) => {
-    if (!ownerId) return;
-    setLoadingOwner(true);
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', ownerId)
-        .single();
-      
-      if (error) throw error;
-      setOwnerProfile(data);
-    } catch (error) {
-      console.error('Error fetching owner profile:', error);
-      setOwnerProfile(null);
-    } finally {
-      setLoadingOwner(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedProduct) {
-      fetchOwnerProfile(selectedProduct.owner_id);
-    } else {
-      setOwnerProfile(null);
-    }
-  }, [selectedProduct]);
-
-  const handleContactSeller = async (sellerId: string) => {
-    if (!user) {
-      showToast("Vui lòng đăng nhập để liên hệ người bán!", "warning");
-      onNavigate('login');
-      return;
-    }
-
-    if (user.id === sellerId) {
-      showToast("Bạn không thể nhắn tin cho chính mình!", "info");
-      return;
-    }
-
-    try {
-      // 1. Kiểm tra xem đã có hội thoại chưa
-      const { data: existing, error: findError } = await supabase
-        .from('conversations')
-        .select('id, landlord_id, tenant_id')
-        .or(`landlord_id.eq.${sellerId},tenant_id.eq.${sellerId}`)
-        .or(`landlord_id.eq.${user.id},tenant_id.eq.${user.id}`);
-      
-      let conversation = existing?.find((c: any) => 
-        (c.landlord_id === sellerId && c.tenant_id === user.id) || 
-        (c.landlord_id === user.id && c.tenant_id === sellerId)
-      );
-
-      let conversationId = conversation?.id;
-
-      // 2. Nếu chưa có -> Tạo mới
-      if (!conversationId) {
-        const { data: newConv, error: createError } = await supabase
-          .from('conversations')
-          .insert({
-            landlord_id: sellerId,
-            tenant_id: user.id
-          })
-          .select()
-          .single();
-        
-        if (createError) throw createError;
-        conversationId = newConv.id;
-      }
-
-      // 3. Lấy role của user để điều hướng đúng Portal
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-      
-      const role = profile?.role || 'tenant';
-      const targetPage = (role === 'landlord' || role === 'admin') ? 'manage' : 'tenant';
-
-      // 4. Điều hướng
-      onNavigate(targetPage, { tab: 'messages', activeChat: conversationId });
-      
-    } catch (error) {
-      console.error('Error in handleContactSeller:', error);
-      showToast("Đã có lỗi xảy ra khi kết nối với người bán.", "error");
-    }
-  };
-
   const filteredProducts = activeCategory === 'all'
     ? products
-    : products.filter(p => {
-        const cat = categories.find(c => c.id === activeCategory);
-        return p.category === cat?.label;
-      });
+    : products.filter(p => p.category === categories.find(c => c.id === activeCategory)?.label);
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
+      <CartDrawer isOpen={showCart} onClose={() => setShowCart(false)} onNavigate={onNavigate} />
+
+      {/* Floating Cart Button */}
+      {cartCount > 0 && (
+        <button
+          onClick={() => setShowCart(true)}
+          className="fixed bottom-6 right-6 z-[100] bg-slate-900 text-white w-14 h-14 rounded-2xl shadow-2xl flex items-center justify-center hover:-translate-y-1 transition-all"
+        >
+          <ShoppingCart className="w-6 h-6" />
+          <span className="absolute -top-2 -right-2 bg-rose-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shadow-md">{cartCount}</span>
+        </button>
+      )}
+
       <Header user={user} onLogout={onLogout} onNavigate={onNavigate} activePath="store">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <input 
             className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl focus:ring-2 focus:ring-primary/20 text-sm outline-none transition-all" 
-            placeholder="Tìm kiếm đồ dùng, nội thất..." 
+            placeholder="Tìm kiếm báo giá online..." 
             type="text"
           />
         </div>
       </Header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow">
         <div className="flex flex-col gap-10">
-          <section className="relative h-[300px] rounded-[32px] overflow-hidden group shadow-2xl">
+          {/* Hero Banner */}
+          <section className="relative h-[250px] md:h-[300px] rounded-[32px] overflow-hidden shadow-2xl">
             <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent z-10"></div>
             <img 
               alt="Store Hero" 
-              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" 
+              className="absolute inset-0 w-full h-full object-cover" 
               src="https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&q=80&w=1920"
               referrerPolicy="no-referrer"
             />
-            <div className="relative z-20 h-full flex flex-col justify-center px-12 text-white mt-1">
-             
-              <motion.h1 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-4xl md:text-5xl font-black mb-4 leading-tight font-display"
-              >
-                Cửa hàng tiện ích<br/>Dành cho ngôi nhà mới
-              </motion.h1>
-              <motion.p 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-white/80 max-w-md mb-8 text-sm font-medium"
-              >
-                Trang bị đầy đủ cho căn phòng trọ của bạn với chi phí tiết kiệm nhất.
-              </motion.p>
+            <div className="relative z-20 h-full flex flex-col justify-center px-8 md:px-12 text-white">
+              <h1 className="text-3xl md:text-5xl font-black mb-4 leading-tight font-display">
+                Chợ đồ cũ sinh viên<br/>Siêu tiết kiệm
+              </h1>
+              <p className="text-white/80 max-w-md mb-8 text-sm md:text-base font-medium">
+                Tìm đồ gia dụng, nội thất giá siêu rẻ từ những người thuê trọ khác. Trải nghiệm trực tuyến, thanh toán an toàn.
+              </p>
               <div className="flex gap-4">
-                <button className="bg-white text-slate-900 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl">
-                  Mua sắm ngay
-                </button>
                 <button 
                   onClick={() => setShowCreateModal(true)}
-                  className="bg-primary text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-primary-hover transition-all shadow-xl flex items-center gap-2"
+                  className="bg-primary hover:bg-primary-hover text-white px-6 md:px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-xl flex items-center gap-2"
                 >
-                  <Plus className="w-4 h-4" />
-                  Đăng bài bán đồ
+                  <Plus className="w-4 h-4" /> Đăng bán đồ
                 </button>
               </div>
             </div>
           </section>
 
+          {/* Categories */}
           <div className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide">
             {categories.map((cat) => (
               <button 
@@ -304,22 +199,19 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
             ))}
           </div>
 
+          {/* Product Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {loading ? (
               <div className="col-span-full py-20 flex flex-col items-center justify-center">
-                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                <p className="mt-4 text-slate-400 font-bold">Đang tải sản phẩm...</p>
+                <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+                <p className="font-bold text-slate-400">Đang tải sản phẩm...</p>
               </div>
             ) : filteredProducts.length === 0 ? (
               <div className="col-span-full py-20 bg-slate-50 rounded-[32px] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-center">
                 <Sparkles className="w-16 h-16 text-slate-200 mb-4" />
                 <h3 className="text-xl font-black text-slate-900 mb-2">Chưa có sản phẩm nào</h3>
-                <p className="text-slate-500 max-w-xs mb-8">Hãy là người đầu tiên đăng bán đồ tại đây!</p>
-                <button 
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-primary text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-primary-hover transition-all shadow-xl"
-                >
-                  Đăng bán ngay
+                <button onClick={() => setShowCreateModal(true)} className="bg-primary text-white px-8 py-3 rounded-xl font-black text-xs mt-4 uppercase shadow-xl hover:-translate-y-1 transition-transform">
+                  Trở thành người bán đầu tiên
                 </button>
               </div>
             ) : (
@@ -330,11 +222,12 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
                    initial={{ opacity: 0, scale: 0.9 }}
                    animate={{ opacity: 1, scale: 1 }}
                    whileHover={{ y: -8 }}
-                   className="group bg-white rounded-[24px] overflow-hidden border border-slate-100 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500"
+                   className="group bg-white rounded-[24px] overflow-hidden border border-slate-100 hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-500 flex flex-col"
                 >
+                   {/* Đã sửa SỰ KIỆN CLICK Điều hướng sang Trang Chi Tiết Mới */}
                    <div 
                      className="relative aspect-[4/5] bg-slate-50 overflow-hidden cursor-pointer"
-                     onClick={() => setSelectedProduct(product)}
+                     onClick={() => onNavigate('store-detail', { id: product.id })}
                    >
                      <img 
                        alt={product.title} 
@@ -342,28 +235,25 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
                        src={product.image_url}
                        referrerPolicy="no-referrer"
                      />
-                     <div className="absolute top-4 left-4 bg-primary text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-lg">
-                       {product.condition}
+                     <div className="absolute top-4 left-4 flex flex-col gap-2">
+                        {product.condition && (
+                            <div className="bg-primary text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-lg w-max">
+                              {product.condition}
+                            </div>
+                        )}
                      </div>
-                     <button className="absolute top-4 right-4 p-3 bg-white/90 backdrop-blur rounded-xl text-slate-400 hover:text-primary transition-all shadow-lg hover:scale-110">
-                       <Heart className="w-5 h-5" />
-                     </button>
                    </div>
-                   <div className="p-6">
+                   <div className="p-6 flex flex-col grow">
                      <p className="text-[10px] font-black text-primary uppercase tracking-[0.2em] mb-2">{product.category}</p>
                      <h3 
-                       className="text-slate-900 font-black text-base mb-3 group-hover:text-primary transition-colors font-display line-clamp-2 min-h-[3rem] cursor-pointer"
-                       onClick={() => setSelectedProduct(product)}
+                       className="text-slate-900 font-bold text-base mb-3 group-hover:text-primary transition-colors font-display line-clamp-2 cursor-pointer"
+                       onClick={() => onNavigate('store-detail', { id: product.id })}
                      >
                        {product.title}
                      </h3>
-                     <div className="flex items-center justify-between mt-auto">
-                       <div>
-                         <span className="text-xl font-black text-slate-900 font-display">{Number(product.price).toLocaleString()}đ</span>
-                       </div>
-                       <button className="w-12 h-12 bg-slate-900 text-white rounded-2xl hover:bg-primary transition-all shadow-xl shadow-slate-900/10 flex items-center justify-center group-hover:scale-110">
-                         <ShoppingCart className="w-5 h-5" />
-                       </button>
+                     
+                     <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+                       <span className="text-xl font-black text-slate-900 font-display text-rose-500">{Number(product.price).toLocaleString()}đ</span>
                      </div>
                    </div>
                 </motion.div>
@@ -373,128 +263,115 @@ export const StorePage = ({ onNavigate, user, onLogout }: StorePageProps) => {
         </div>
       </main>
 
+      {/* CREATE PRODUCT MODAL - Dành cho đăng bài bán hàng */}
       <AnimatePresence>
         {showCreateModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto pt-10 pb-10">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden my-auto"
+              className="bg-white rounded-[40px] w-full max-w-4xl shadow-2xl overflow-hidden my-auto border border-slate-100"
             >
-              <div className="bg-slate-900 px-8 py-10 text-white relative">
-                <button 
-                  onClick={() => setShowCreateModal(false)}
-                  className="absolute top-8 right-8 w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 hover:bg-white/20 transition-all text-white"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+              <div className="bg-slate-900 px-8 py-8 text-white relative flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
                      <PlusCircle className="w-6 h-6" />
                   </div>
-                  <h3 className="text-2xl font-black font-display text-white">Đăng bài bán đồ mới</h3>
+                  <h3 className="text-2xl font-black font-display text-white">Đăng tin bán chuyên nghiệp</h3>
                 </div>
+                <button onClick={() => setShowCreateModal(false)} className="w-10 h-10 flex items-center justify-center rounded-2xl bg-white/10 hover:bg-white/20 transition-all text-white">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Tên sản phẩm *</label>
-                    <input 
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 transition-all font-semibold"
-                      placeholder="Ví dụ: Bàn học gỗ 1m2"
-                      value={productForm.title}
-                      onChange={(e) => setProductForm({ ...productForm, title: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Giá bán (VNĐ) *</label>
-                    <input 
-                      type="number"
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 transition-all font-semibold"
-                      placeholder="500000"
-                      value={productForm.price}
-                      onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                    />
-                  </div>
+              <div className="p-8 h-[70vh] overflow-y-auto custom-scrollbar">
+                <div className="mb-8 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                   <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <LayoutGrid className="w-5 h-5 text-primary" /> Album Hình ảnh (Tối đa 3 ảnh)
+                   </h4>
+                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {productForm.images.map((img, idx) => (
+                         <div key={idx} className="relative">
+                            <input 
+                              className="w-full bg-white border-2 border-slate-100 rounded-2xl px-4 py-3 outline-none focus:border-primary/50 text-xs font-semibold pr-10"
+                              placeholder={`URL Ảnh ${idx + 1} ${idx === 0 ? '(Bắt buộc)' : ''}`}
+                              value={img}
+                              onChange={(e) => handleImageChange(idx, e.target.value)}
+                            />
+                            {img && (
+                                <img src={img} className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md object-cover border border-slate-200" />
+                            )}
+                         </div>
+                      ))}
+                   </div>
                 </div>
-                <div>
-                   <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Hình ảnh sản phẩm (Link URL) *</label>
-                   <input 
-                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 transition-all font-semibold text-xs"
-                     placeholder="Dán link ảnh tại đây..."
-                     value={productForm.image_url}
-                     onChange={(e) => setProductForm({ ...productForm, image_url: e.target.value })}
-                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Mô tả sản phẩm</label>
-                  <textarea 
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-6 py-4 outline-none focus:border-primary/30 transition-all font-semibold min-h-[120px] resize-none"
-                    placeholder="Mô tả kỹ hơn về sản phẩm..."
-                    value={productForm.description}
-                    onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  />
-                </div>
-                <div className="pt-6 flex gap-4">
-                  <button onClick={() => setShowCreateModal(false)} className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400">Hủy</button>
-                  <button 
-                    onClick={handleCreateProduct}
-                    disabled={isSubmitting}
-                    className="flex-[2] bg-primary text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-2"
-                  >
-                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Đăng bán ngay'}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      <AnimatePresence>
-        {selectedProduct && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto">
-            <motion.div 
-               initial={{ opacity: 0, scale: 0.9, y: 40 }}
-               animate={{ opacity: 1, scale: 1, y: 0 }}
-               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-               className="bg-white rounded-[48px] w-full max-w-5xl shadow-2xl overflow-hidden my-auto flex flex-col md:flex-row min-h-[600px]"
-            >
-               <div className="flex-1 bg-slate-50 relative">
-                  <img src={selectedProduct.image_url} className="w-full h-full object-cover" />
-                  <button onClick={() => setSelectedProduct(null)} className="absolute top-8 left-8 p-3 bg-white/20 rounded-2xl text-white">
-                     <ChevronLeft className="w-6 h-6" />
-                  </button>
-               </div>
-               <div className="flex-1 p-8 md:p-14 flex flex-col relative">
-                  <button onClick={() => setSelectedProduct(null)} className="absolute top-8 right-8 p-3 bg-slate-100 rounded-2xl text-slate-400">
-                     <X className="w-6 h-6" />
-                  </button>
-                  <div className="mb-8">
-                     <h2 className="text-3xl font-black text-slate-900 mb-4 font-display">{selectedProduct.title}</h2>
-                     <div className="text-3xl font-black text-primary font-display">{Number(selectedProduct.price).toLocaleString()}đ</div>
-                  </div>
-                  <div className="flex-1 space-y-8 overflow-y-auto pr-2">
-                      <p className="text-slate-500 font-medium leading-relaxed">{selectedProduct.description || 'Không có mô tả.'}</p>
-                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex items-center gap-4">
-                          <img src={ownerProfile?.avatar_url || 'https://ui-avatars.com/api/?name=' + ownerProfile?.full_name} className="w-12 h-12 rounded-2xl object-cover" />
-                          <div>
-                             <p className="font-black text-slate-900">{ownerProfile?.full_name || 'Người dùng'}</p>
-                             <p className="text-[10px] font-bold text-slate-400 uppercase">Người bán bài này</p>
-                          </div>
-                          <button onClick={() => handleContactSeller(selectedProduct.owner_id)} className="ml-auto p-3 bg-white text-primary rounded-xl shadow-sm hover:scale-110 transition-transform">
-                             <MessageSquare className="w-5 h-5" />
-                          </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Tên sản phẩm *</label>
+                        <input className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 font-semibold" placeholder="Bàn Ghế Gỗ Xoài (Dưới 30 ký tự)" value={productForm.title} onChange={(e) => setProductForm({ ...productForm, title: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Giá bán VNĐ *</label>
+                        <input type="number" className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 font-semibold" placeholder="Vd: 500000" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Tình trạng</label>
+                        <select className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none font-semibold appearance-none" value={productForm.condition} onChange={(e) => setProductForm({ ...productForm, condition: e.target.value })}>
+                            <option value="Mới nguyên seal">Mới nguyên seal</option>
+                            <option value="Như mới (Like New)">Như mới (Like New)</option>
+                            <option value="Cũ (Chưa qua sửa chữa)">Cũ (Chưa qua sửa chữa)</option>
+                            <option value="Cũ sửa chữa nhẹ">Cũ sửa chữa nhẹ</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Bảo hành</label>
+                        <select className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none font-semibold appearance-none" value={productForm.warranty} onChange={(e) => setProductForm({ ...productForm, warranty: e.target.value })}>
+                            <option value="Không bảo hành">Không bảo hành</option>
+                            <option value="Bảo hành 1 tháng">Bảo hành 1 tháng</option>
+                            <option value="Bảo hành 3 tháng">Bảo hành 3 tháng</option>
+                            <option value="Bảo hành hãng 12 tháng">Bảo hành hãng 12 tháng</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Số lượng có sẵn *</label>
+                        <input type="number" min="1" className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 font-semibold" placeholder="Vd: 1" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: parseInt(e.target.value) || 1 })} />
                       </div>
                   </div>
-                  <div className="mt-10 flex gap-4">
-                     <button onClick={() => handleContactSeller(selectedProduct.owner_id)} className="flex-1 bg-primary text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-orange-500/20 hover:bg-primary-hover transition-all">
-                        Liên hệ ngay
-                     </button>
+                  
+                  <div className="space-y-6">
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Danh mục</label>
+                        <select className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none font-semibold appearance-none" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })}>
+                            {categories.filter(c => c.id !== 'all').map(c => (
+                                <option key={c.id} value={c.label}>{c.label}</option>
+                            ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Thương hiệu / Xuất xứ</label>
+                        <input className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 font-semibold" placeholder="Vd: Hòa Phát, Daikin..." value={productForm.brand} onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Khu vực Giao dịch</label>
+                        <input className="w-full bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-primary/30 font-semibold" placeholder="Số nhà, Tên Đường, Quận..." value={productForm.address_summary} onChange={(e) => setProductForm({ ...productForm, address_summary: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-900 uppercase tracking-widest mb-3">Mô tả chi tiết</label>
+                        <textarea className="w-full bg-white border-2 border-slate-100 rounded-3xl px-6 py-4 outline-none focus:border-primary/30 font-semibold min-h-[140px] resize-none" placeholder="Hãy viết mô tả thật hay và rõ ràng để thu hút người mua nhé! Càng chi tiết càng bán nhanh..." value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} />
+                      </div>
                   </div>
-               </div>
+                </div>
+
+                <div className="pt-8 border-t border-slate-100 mt-8 flex gap-4">
+                  <button onClick={() => setShowCreateModal(false)} className="flex-[1] py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100">Hủy</button>
+                  <button onClick={handleCreateProduct} disabled={isSubmitting} className="flex-[3] bg-primary text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-500/30 flex items-center justify-center gap-2 hover:-translate-y-1 transition-all">
+                    {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-5 h-5"/> Hoàn tất đăng tin</>}
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

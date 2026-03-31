@@ -105,6 +105,10 @@ CREATE TABLE public.products (
   condition text,
   status text DEFAULT 'available'::text,
   created_at timestamp with time zone DEFAULT now(),
+  brand text,
+  warranty text,
+  address_summary text,
+  stock integer DEFAULT 1,
   CONSTRAINT products_pkey PRIMARY KEY (id),
   CONSTRAINT products_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id)
 );
