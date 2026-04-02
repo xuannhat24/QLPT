@@ -19,6 +19,7 @@ interface StoreDetailPageProps {
 
 export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDetailPageProps) => {
   const [product, setProduct] = useState<any>(null);
+  const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
   const [ownerProfile, setOwnerProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -32,6 +33,11 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
     if (!user) {
       showToast('Vui lòng đăng nhập để thêm vào giỏ hàng!', 'warning');
       onNavigate('login');
+      return;
+    }
+
+    if (user.id === product.owner_id) {
+      showToast('Bạn không thể tự mua hàng của chính mình!', 'warning');
       return;
     }
     addToCart({
@@ -65,6 +71,17 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
         if (error) throw error;
         setProduct(data);
 
+        // Fetch Related Products
+        if (data?.category) {
+          const { data: related } = await supabase
+            .from('products')
+            .select('*')
+            .eq('category', data.category)
+            .neq('id', data.id)
+            .limit(4);
+          if (related) setRelatedProducts(related);
+        }
+
         if (data?.owner_id) {
           const { data: profile } = await supabase
             .from('profiles')
@@ -82,6 +99,8 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
     };
 
     fetchProductDetail();
+    // Reset scroll when product changes
+    window.scrollTo(0, 0);
   }, [params?.id]);
 
   const handleBuyNow = async () => {
@@ -97,30 +116,15 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
       return;
     }
 
-    try {
-      showToast("Đang kết nối cổng thanh toán...", "info");
-      const response = await fetch('http://localhost:3001/create-payment-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: product.price,
-          orderId: product.id.substring(0, 10), // VNPAY max length rule
-          orderInfo: `Thanh toan SP ${product.title.substring(0, 40)}`
-        }),
-      });
-
-      if (!response.ok) throw new Error('Cổng thanh toán từ chối kết nối');
-
-      const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-         throw new Error('Chưa lấy được Return URL từ hệ thống');
-      }
-    } catch (error) {
-      console.error('Lỗi VNPay:', error);
-      showToast("Đã có lỗi phía kết nối VNPay.", "error");
-    }
+    onNavigate('checkout', { singleProduct: {
+      id: product.id,
+      title: product.title,
+      price: product.price,
+      image_url: product.image_url,
+      condition: product.condition,
+      quantity: 1,
+      owner_id: product.owner_id
+    }});
   };
 
   const handleContactSeller = async () => {
@@ -197,20 +201,30 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <CartDrawer isOpen={showCart} onClose={() => setShowCart(false)} onNavigate={onNavigate} />
+      <CartDrawer 
+        isOpen={showCart} 
+        onClose={() => setShowCart(false)} 
+        onNavigate={onNavigate} 
+        user={user}
+      />
 
       {/* Floating Cart Button */}
-      {cartCount > 0 && (
-        <button
-          onClick={() => setShowCart(true)}
-          className="fixed bottom-6 right-6 z-[100] bg-slate-900 text-white w-14 h-14 rounded-2xl shadow-2xl flex items-center justify-center hover:-translate-y-1 transition-all"
-        >
-          <ShoppingCart className="w-6 h-6" />
-          <span className="absolute -top-2 -right-2 bg-rose-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center shadow-md">{cartCount}</span>
-        </button>
-      )}
+      <button
+        onClick={() => setShowCart(true)}
+        className="fixed bottom-6 right-6 z-[100] bg-primary text-white w-14 h-14 rounded-2xl shadow-2xl shadow-orange-500/40 flex items-center justify-center hover:-translate-y-1 transition-all"
+      >
+        <ShoppingCart className="w-6 h-6" />
+        {cartCount > 0 && (
+          <span className="absolute -top-2 -right-2 bg-slate-900 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center shadow-lg">{cartCount}</span>
+        )}
+      </button>
 
-      <Header user={user} onLogout={onLogout} onNavigate={onNavigate as any} activePath="store" />
+      <Header 
+        user={user} 
+        onLogout={onLogout} 
+        onNavigate={onNavigate as any} 
+        activePath="store" 
+      />
 
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
         {/* Breadcrumb Navigation */}
@@ -225,7 +239,7 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
         </div>
 
         {/* 2-Column Product Layout (ChoTot Replica) */}
-        <div className="bg-white rounded-[40px] w-full shadow-2xl xl:shadow-slate-200/50 overflow-hidden flex flex-col lg:flex-row relative border border-slate-100 mb-8">
+        <div className="bg-white rounded-[40px] w-full shadow-2xl xl:shadow-slate-200/50 overflow-hidden flex flex-col lg:flex-row relative border border-slate-100 mb-12">
            
            {/* LEFT VIEW: Images & Content description */}
            <div className="w-full lg:w-[60%] border-r border-slate-100 bg-white">
@@ -236,6 +250,7 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
                        src={galleryImages[activeImageIndex] || 'https://via.placeholder.com/800x600?text=No+Image'} 
                        className="w-full h-full object-cover cursor-zoom-in group-hover:scale-105 transition-transform duration-500" 
                        onClick={() => window.open(galleryImages[activeImageIndex], '_blank')}
+                       referrerPolicy="no-referrer"
                      />
                      <div className="absolute top-4 left-4">
                         {product.condition && (
@@ -256,7 +271,7 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
                              onClick={() => setActiveImageIndex(idx)}
                              className={`flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden cursor-pointer border-[3px] transition-all hover:-translate-y-1 ${activeImageIndex === idx ? 'border-primary opacity-100 shadow-xl shadow-orange-500/20' : 'border-transparent opacity-50 hover:opacity-100'}`}
                            >
-                              <img src={img} className="w-full h-full object-cover" />
+                              <img src={img} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                            </button>
                            )
                         ))}
@@ -267,7 +282,7 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
               {/* Informative Table & Long Description */}
               <div className="p-6 sm:p-10 border-t border-slate-50">
                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mb-4 font-display leading-tight">{product.title}</h2>
-                 <p className="text-3xl font-black text-rose-500 font-display mb-8 lg:hidden">{Number(product.price).toLocaleString()}đ</p>
+                 <p className="text-3xl font-black text-primary font-display mb-8 lg:hidden">{Number(product.price).toLocaleString()}đ</p>
                  
                  <div className="bg-slate-50 rounded-3xl p-6 sm:p-8 mb-10 border border-slate-100 grid grid-cols-2 gap-y-8 gap-x-6">
                     <div>
@@ -302,13 +317,13 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
               <div className="lg:sticky lg:top-24 flex flex-col gap-8">
                 
                 {/* Price Desktop Component */}
-                <div className="hidden lg:block bg-white p-8 rounded-3xl border border-rose-100 shadow-sm">
+                <div className="hidden lg:block bg-white p-8 rounded-3xl border border-orange-100 shadow-sm">
                     <div className="flex items-end justify-between mb-3">
                        <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Mức giá ưu đãi</p>
                        <p className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg flex items-center gap-1"><Box className="w-3 h-3"/> Tồn kho: {product.stock || 1}</p>
                     </div>
-                    <div className="text-5xl font-black text-rose-500 font-display flex items-baseline gap-2">
-                       {Number(product.price).toLocaleString()} <span className="text-2xl text-rose-300">đ</span>
+                    <div className="text-5xl font-black text-primary font-display flex items-baseline gap-2">
+                       {Number(product.price).toLocaleString()} <span className="text-2xl text-orange-200">đ</span>
                     </div>
                 </div>
 
@@ -340,10 +355,10 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
                 <div className="flex flex-col gap-3">
                     <button 
                       onClick={handleBuyNow} 
-                      className="w-full bg-rose-500 text-white py-4 rounded-[20px] font-black text-sm sm:text-base uppercase tracking-widest shadow-xl shadow-rose-500/30 hover:bg-rose-600 transition-all flex items-center justify-center gap-3 group hover:-translate-y-1"
+                      className="w-full bg-primary text-white py-4 rounded-[20px] font-black text-sm sm:text-base uppercase tracking-widest shadow-xl shadow-orange-500/30 hover:bg-orange-600 transition-all flex items-center justify-center gap-3 group hover:-translate-y-1"
                     >
-                       <ShoppingCart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                       Mua Ngay qua VNPAY
+                       <ShoppingCart className="w-5 h-5 group-active:scale-110 transition-transform" />
+                       Mua Ngay
                     </button>
 
                     <button 
@@ -378,8 +393,48 @@ export const StoreDetailPage = ({ onNavigate, user, onLogout, params }: StoreDet
                 </div>
               </div>
            </div>
-
         </div>
+
+        {/* RELATED PRODUCTS SECTION */}
+        {relatedProducts.length > 0 && (
+          <div className="mt-16">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-2xl font-black text-slate-900 font-display">Các sản phẩm cùng danh mục</h3>
+              <button 
+                onClick={() => onNavigate('store')}
+                className="text-primary font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all"
+              >
+                Xem tất cả <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {relatedProducts.map((p) => (
+                <div 
+                  key={p.id}
+                  onClick={() => onNavigate('store-detail', { id: p.id })}
+                  className="bg-white rounded-3xl overflow-hidden border border-slate-100 hover:shadow-xl transition-all cursor-pointer group"
+                >
+                  <div className="aspect-[4/5] overflow-hidden relative">
+                    <img 
+                      src={p.image_url} 
+                      alt={p.title} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute top-3 left-3">
+                      <span className="bg-white/90 backdrop-blur text-[10px] font-black px-2 py-1 rounded-lg text-slate-900 border border-slate-100 uppercase tracking-widest">{p.condition}</span>
+                    </div>
+                  </div>
+                  <div className="p-5">
+                    <h4 className="font-bold text-slate-800 mb-2 truncate group-hover:text-primary transition-colors">{p.title}</h4>
+                    <p className="text-primary font-black text-lg">{Number(p.price).toLocaleString()}đ</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       <Footer />

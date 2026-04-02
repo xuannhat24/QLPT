@@ -12,13 +12,15 @@ import { AdminPage } from './pages/AdminPage';
 import { ListingDetailPage } from './pages/ListingDetailPage';
 import { PaymentResultPage } from './pages/PaymentResultPage';
 import { StoreDetailPage } from './pages/StoreDetailPage';
+import { CheckoutPage } from './pages/CheckoutPage';
+import { MyStorePage } from './pages/MyStorePage';
 import { useToast } from './context/ToastContext';
 import ProBot from './components/ProBot';
 import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from './lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
-type Page = 'home' | 'login' | 'register' | 'forgot-password' | 'manage' | 'store' | 'search' | 'contact' | 'tenant' | 'admin' | 'listing-detail' | 'payment-result' | 'store-detail';
+type Page = 'home' | 'login' | 'register' | 'forgot-password' | 'manage' | 'store' | 'search' | 'contact' | 'tenant' | 'admin' | 'listing-detail' | 'payment-result' | 'store-detail' | 'checkout' | 'my-store';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(() => {
@@ -168,6 +170,7 @@ export default function App() {
           {currentPage === 'payment-result' && (
             <PaymentResultPage 
               onNavigate={handleNavigate} 
+              params={searchParams}
             />
           )}
           {currentPage === 'store-detail' && (
@@ -178,10 +181,25 @@ export default function App() {
               params={searchParams}
             />
           )}
+          {currentPage === 'checkout' && (
+            <CheckoutPage 
+              onNavigate={handleNavigate} 
+              user={session?.user || null}
+              onLogout={handleLogout}
+              params={searchParams}
+            />
+          )}
+          {currentPage === 'my-store' && (
+            <MyStorePage 
+              onNavigate={handleNavigate} 
+              user={session?.user || null}
+              onLogout={handleLogout}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
-      {/* ProBot chỉ hiện ở những trang không phải cửa hàng */}
-      {currentPage !== 'store' && currentPage !== 'store-detail' && (
+      {/* ProBot chỉ hiện ở những trang không phải cửa hàng, quản lý mua bán và thanh toán */}
+      {currentPage !== 'store' && currentPage !== 'store-detail' && currentPage !== 'my-store' && currentPage !== 'checkout' && (
         <ProBot onNavigate={handleNavigate} />
       )}
     </>

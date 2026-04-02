@@ -3,7 +3,7 @@ import { Home, User, LogOut } from 'lucide-react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { NotificationBell } from './NotificationBell';
 
-export type Page = 'home' | 'login' | 'register' | 'store' | 'manage' | 'contact' | 'search' | 'tenant' | 'admin' | 'listing-detail';
+export type Page = 'home' | 'login' | 'register' | 'store' | 'manage' | 'contact' | 'search' | 'tenant' | 'admin' | 'listing-detail' | 'my-store';
 
 interface HeaderProps {
   user: SupabaseUser | null;
@@ -101,28 +101,28 @@ export const Header = ({ user, onLogout, onNavigate, activePath, children }: Hea
         
         <div className="flex items-center gap-3">
           {user ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 ml-2">
               <NotificationBell user={user} onNavigate={onNavigate} />
               <div className="flex items-center gap-2 cursor-pointer group">
-                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all border border-primary/20">
                   <User className="w-5 h-5" />
                 </div>
-                <span className="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors">
-                  {user.user_metadata?.full_name || user.email}
+                <span className="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors hidden sm:block">
+                  {user.user_metadata?.full_name || user.email?.split('@')[0]}
                 </span>
               </div>
               <button 
                 onClick={onLogout}
-                className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-red-100 hover:text-red-600 transition-colors"
+                className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all border border-slate-100"
                 title="Đăng xuất"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 ml-2">
               <button onClick={() => onNavigate('login')} className="text-sm font-bold text-slate-600 hover:text-primary transition-colors">Đăng nhập</button>
-              <button onClick={() => onNavigate('register')} className="bg-primary text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-primary-hover transition-all shadow-md shadow-orange-100">Đăng ký</button>
+              <button onClick={() => onNavigate('register')} className="bg-primary text-white text-sm font-bold px-6 py-3 rounded-2xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20">Đăng ký</button>
             </div>
           )}
         </div>

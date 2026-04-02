@@ -7,17 +7,19 @@ import {
   Eye, 
   EyeOff, 
   ArrowRight, 
-  Smartphone
+  Smartphone,
+  Phone
 } from 'lucide-react';
 import { AuthIllustration } from '../components/AuthIllustration';
 import { supabase } from '../lib/supabase';
 
 export const LoginPage = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState(() => localStorage.getItem('rememberedPhone') || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem('rememberedPhone'));
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,12 +27,22 @@ export const LoginPage = ({ onNavigate }: { onNavigate: (page: string) => void }
     setError(null);
 
     try {
+      const formattedPhone = phone.startsWith('0') ? `+84${phone.slice(1)}` : phone.startsWith('+') ? phone : `+84${phone}`;
+
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        phone: formattedPhone,
         password,
       });
 
       if (error) throw error;
+
+      // Xử lý ghi nhớ số điện thoại
+      if (rememberMe) {
+        localStorage.setItem('rememberedPhone', phone);
+      } else {
+        localStorage.removeItem('rememberedPhone');
+      }
+
       onNavigate('home');
     } catch (err: any) {
       setError(err.message || 'Đã có lỗi xảy ra khi đăng nhập');
@@ -70,15 +82,15 @@ export const LoginPage = ({ onNavigate }: { onNavigate: (page: string) => void }
 
           <form className="space-y-6" onSubmit={handleLogin}>
             <div className="flex flex-col gap-2">
-              <label className="text-slate-700 text-sm font-bold ml-1">Email của bạn</label>
+              <label className="text-slate-700 text-sm font-bold ml-1">Số điện thoại</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
                 <input 
                   className="flex w-full rounded-xl border-2 border-slate-100 bg-slate-50 h-14 pl-12 pr-4 text-slate-900 focus:border-primary focus:ring-0 placeholder:text-slate-400 transition-all outline-none" 
-                  placeholder="name@example.com" 
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="0901 234 567" 
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   required
                 />
               </div>
@@ -120,8 +132,10 @@ export const LoginPage = ({ onNavigate }: { onNavigate: (page: string) => void }
                 className="w-5 h-5 rounded-md border-2 border-slate-200 text-primary focus:ring-primary focus:ring-offset-2 cursor-pointer" 
                 id="remember" 
                 type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
               />
-              <label className="text-sm font-medium text-slate-600 cursor-pointer select-none" htmlFor="remember">Ghi nhớ đăng nhập</label>
+              <label className="text-sm font-medium text-slate-600 cursor-pointer select-none" htmlFor="remember">Ghi nhớ số điện thoại</label>
             </div>
 
             <button 

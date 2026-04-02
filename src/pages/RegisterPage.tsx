@@ -17,13 +17,14 @@ import { supabase } from '../lib/supabase';
 export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => void }) => {
   const [role, setRole] = useState<'landlord' | 'tenant'>('landlord');
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [step, setStep] = useState<'form' | 'otp'>('form');
+  const [otp, setOtp] = useState('');
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +38,15 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
     }
 
     try {
+      const formattedPhone = phone.startsWith('0') ? `+84${phone.slice(1)}` : phone.startsWith('+') ? phone : `+84${phone}`;
+      
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email,
+        phone: formattedPhone,
         password,
         options: {
           data: {
             full_name: fullName,
-            phone: phone,
+            phone: formattedPhone,
             role: role,
           }
         }
@@ -51,27 +54,50 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
 
       if (signUpError) throw signUpError;
 
-      // Tạo bản ghi profile trong bảng public.profiles
-      if (authData.user) {
+      setStep('otp');
+    } catch (err: any) {
+      setError(err.message || 'Đã có lỗi xảy ra khi đăng ký');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const formattedPhone = phone.startsWith('0') ? `+84${phone.slice(1)}` : phone.startsWith('+') ? phone : `+84${phone}`;
+      
+      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+        phone: formattedPhone,
+        token: otp,
+        type: 'sms'
+      });
+
+      if (verifyError) throw verifyError;
+
+      // Create profile after OTP verification and successful login natively
+      if (verifyData.user) {
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
-            id: authData.user.id,
+            id: verifyData.user.id,
             full_name: fullName,
-            phone: phone,
+            phone: formattedPhone,
             role: role,
           }, { onConflict: 'id' });
 
         if (profileError) {
           console.error('Lỗi tạo profile:', profileError);
-          // Không throw vì đăng ký vẫn thành công, profile có thể được tạo qua trigger
         }
       }
 
       setSuccess(true);
-      setTimeout(() => onNavigate('login'), 3000);
+      setTimeout(() => onNavigate('home'), 2000); // Usually OTP logs user in immediately, redirect to home
     } catch (err: any) {
-      setError(err.message || 'Đã có lỗi xảy ra khi đăng ký');
+      setError(err.message || 'Mã xác thực không hợp lệ. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -108,11 +134,12 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
 
           {success && (
             <div className="mb-6 p-4 bg-green-50 border border-green-100 text-green-600 rounded-xl text-sm font-medium">
-              Đăng ký thành công! Đang chuyển hướng đến trang đăng nhập...
+              Đăng ký và xác thực thành công! Đang chuyển hướng...
             </div>
           )}
 
-          <form className="flex flex-col gap-5" onSubmit={handleRegister}>
+          {step === 'form' ? (
+            <form className="flex flex-col gap-5" onSubmit={handleRegister}>
             <div className="flex flex-col gap-2">
               <label className="text-slate-700 text-sm font-semibold">Họ và tên</label>
               <div className="relative">
@@ -128,34 +155,18 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-slate-700 text-sm font-semibold">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
-                  <input 
-                    className="flex w-full rounded-lg border border-slate-300 bg-white h-12 pl-10 pr-4 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                    placeholder="example@gmail.com" 
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-slate-700 text-sm font-semibold">Số điện thoại</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
-                  <input 
-                    className="flex w-full rounded-lg border border-slate-300 bg-white h-12 pl-10 pr-4 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                    placeholder="0901 234 567" 
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                  />
-                </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-slate-700 text-sm font-semibold">Số điện thoại</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
+                <input 
+                  className="flex w-full rounded-lg border border-slate-300 bg-white h-12 pl-10 pr-4 text-slate-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
+                  placeholder="0901 234 567" 
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
@@ -234,6 +245,55 @@ export const RegisterPage = ({ onNavigate }: { onNavigate: (page: string) => voi
               </p>
             </div>
           </form>
+          ) : (
+          <form className="flex flex-col gap-5" onSubmit={handleVerifyOtp}>
+            <div className="p-4 bg-orange-50 rounded-xl mb-4 border border-orange-100">
+              <p className="text-sm text-slate-700 text-center">
+                Mã xác nhận gồm 6 chữ số đã được gửi tới số điện thoại<br/>
+                <span className="font-bold text-primary">{phone}</span>
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-slate-700 text-sm font-semibold text-center">Nhập mã xác nhận (OTP)</label>
+              <div className="relative mx-auto w-48">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60 w-5 h-5" />
+                <input 
+                  className="flex w-full rounded-lg border border-slate-300 bg-white h-14 pl-10 pr-4 text-slate-900 text-center text-xl tracking-[0.2em] font-bold focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all" 
+                  placeholder="000000" 
+                  type="text"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="mt-6">
+              <button 
+                disabled={loading || otp.length < 6}
+                className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-4 px-4 rounded-xl transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2 group disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                <span>{loading ? 'Đang xác thực...' : 'Hoàn tất Đăng ký'}</span>
+                {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+              </button>
+            </div>
+
+            <div className="mt-4 text-center">
+              <button 
+                type="button"
+                onClick={() => {
+                  setStep('form');
+                  setOtp('');
+                  setError(null);
+                }}
+                className="text-slate-500 font-medium hover:text-slate-800 transition-colors text-sm"
+              >
+                Quay lại sửa thông tin
+              </button>
+            </div>
+          </form>
+          )}
         </motion.div>
 
         <div className="mt-auto pt-8 flex gap-6 text-slate-400 text-xs">
